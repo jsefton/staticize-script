@@ -79,7 +79,11 @@ class Staticize {
             if(strpos($pageLink,$this->domain) !== false) {
                 if($pageLink !== $this->domain && $pageLink !== ($this->domain . "/")) {
                     if(!in_array($pageLink,$this->assets) && !in_array($pageLink,$this->downloadedAssets)) {
-                        $this->assets[] = $tag->getAttribute($type);
+                        if (strpos($pageLink, "data:") !== false) {
+
+                        } else {
+                            $this->assets[] = $tag->getAttribute($type);
+                        }
                     }
                 }
             }
@@ -91,7 +95,7 @@ class Staticize {
     }
 
 
-    public function downloadPages(){
+    public function downloadPages($override = false){
         if($this->links){
             foreach($this->links as $key => $link){
                 if(!in_array($link,$this->downloaded)) {
@@ -101,19 +105,23 @@ class Staticize {
                         mkdir($linkPath, 0777, true);
                     }
 
-                    $html = file_get_contents($link, false);
-                    $this->getLinks($html);
-                    $html = str_replace($this->domain,$this->newDomain,$html);
-                    file_put_contents($linkPath . "/index.html", $html);
-                    $this->downloaded[] = $link;
-                    echo "Downloaded: " . $link . "\n";
+                    if(!file_exists($linkPath . "/index.html") || $override) {
+                        $html = file_get_contents($link, false);
+                        $this->getLinks($html);
+                        $html = str_replace($this->domain, $this->newDomain, $html);
+                        file_put_contents($linkPath . "/index.html", $html);
+                        $this->downloaded[] = $link;
+                        echo "Downloaded: " . $link . "\n";
+                    } else {
+                        echo "Already Exists: " . $link . "\n";
+                    }
 
                 }
                 unset($this->links[$key]);
             }
 
             if($this->links){
-                $this->downloadPages();
+                $this->downloadPages($override);
             }
         }
 
@@ -136,32 +144,43 @@ class Staticize {
                         mkdir($assetPath, 0777, true);
                     }
 
-                    $html = file_get_contents($link, false);
-                    $this->getLinks($html);
-                    $html = str_replace($this->domain,$this->newDomain,$html);
+                    $linkPath = preg_replace('/\?.*/', '', $linkPath);
 
+                    if(!file_exists($linkPath)) {
 
+                        $html = file_get_contents($link, false);
+                        $this->getLinks($html);
+                        $html = str_replace($this->domain, $this->newDomain, $html);
 
-                    if(strpos($link,".css") !== false) {
-                        $reg_exUrl = "/\(.*?\)/";
+                        if (strpos($link, ".css") !== false) {
+                            $reg_exUrl = "/url\(.*?\)/";
 
-                        $fileParts = explode("/",$link);
-                        $pathReplace = $fileParts[(count($fileParts) - 2)];
-                        preg_match_all($reg_exUrl, $html, $matches);
-                        if($matches[0]){
-                            foreach($matches[0] as $match){
-                                $match = str_replace("'","",$match);
-                                $match = str_replace("(","",$match);
-                                $match = str_replace(")","",$match);
-                                $match = str_replace("..",$pathReplace,$match);
+                            $fileParts = explode("/", $link);
+                            $pathReplace = $fileParts[3];
 
-                                $this->assets[] = $this->domain . $match;
+                            preg_match_all($reg_exUrl, $html, $matches);
+                            if ($matches[0]) {
+                                foreach ($matches[0] as $match) {
+                                    $match = str_replace("url", "", $match);
+                                    $match = str_replace("'", "", $match);
+                                    $match = str_replace('"', "", $match);
+                                    $match = str_replace("(", "", $match);
+                                    $match = str_replace(")", "", $match);
+                                    $match = str_replace("..", $pathReplace, $match);
+
+                                    if(substr($match,0,1) !== "/"){
+                                        $match = "/" . $match;
+                                    }
+
+                                    if (strpos($match, "data:") !== false) {
+                                        // Skip asset if its a data image
+                                    } else {
+                                        $this->assets[] = $this->domain . $match;
+                                    }
+                                }
                             }
                         }
-                    }
 
-                    $linkPath = preg_replace('/\?.*/', '', $linkPath);
-                    if(!file_exists($linkPath)){
                         file_put_contents($linkPath, $html);
                         echo "Downloaded: " . $link . "\n";
                     } else {
@@ -174,23 +193,24 @@ class Staticize {
                 }
                 unset($this->assets[$key]);
             }
-
         }
-
     }
 
-    public function download()
+    public function download($override = false)
     {
         $html = file_get_contents($this->domain,false);
         $this->getLinks($html);
         $html = str_replace($this->domain,$this->newDomain,$html);
         file_put_contents($this->sitePath . "/index.html",$html);
         echo "Homepage Generated!\n";
-        $this->downloadPages();
+        $this->downloadPages($override);
         $this->downloadAssets();
 
         // Run again to download any found from within internal css / js
         $this->downloadAssets();
+
+
+        print_r($this);
 
         return $this;
     }
