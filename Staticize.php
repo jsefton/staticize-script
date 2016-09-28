@@ -46,6 +46,15 @@ class Staticize {
                         $this->links[] = $tag->getAttribute('href');
                     }
                 }
+            } else {
+                if(substr($pageLink,0,1) == "/") {
+                    $pageLink = $this->domain . $pageLink;
+                    if ($pageLink !== $this->domain && $pageLink !== ($this->domain . "/")) {
+                        if (!in_array($pageLink, $this->links) && !in_array($pageLink, $this->downloaded)) {
+                            $this->links[] = $pageLink;
+                        }
+                    }
+                }
             }
         }
 
@@ -131,21 +140,36 @@ class Staticize {
                     $this->getLinks($html);
                     $html = str_replace($this->domain,$this->newDomain,$html);
 
-                    if(strpos($link,".css") !== false) {
-                        $reg_exUrl = "/\'\/.*?'/";
 
+
+                    if(strpos($link,".css") !== false) {
+                        $reg_exUrl = "/\(.*?\)/";
+
+                        $fileParts = explode("/",$link);
+                        $pathReplace = $fileParts[(count($fileParts) - 2)];
                         preg_match_all($reg_exUrl, $html, $matches);
                         if($matches[0]){
                             foreach($matches[0] as $match){
-                                $this->assets[] = $this->domain . str_replace("'","",$match);
+                                $match = str_replace("'","",$match);
+                                $match = str_replace("(","",$match);
+                                $match = str_replace(")","",$match);
+                                $match = str_replace("..",$pathReplace,$match);
+
+                                $this->assets[] = $this->domain . $match;
                             }
                         }
                     }
 
+                    $linkPath = preg_replace('/\?.*/', '', $linkPath);
+                    if(!file_exists($linkPath)){
+                        file_put_contents($linkPath, $html);
+                        echo "Downloaded: " . $link . "\n";
+                    } else {
+                        echo "Already Exists: " . $link . "\n";
+                    }
 
-                    file_put_contents($linkPath, $html);
                     $this->downloadedAssets[] = $link;
-                    echo "Downloaded: " . $link . "\n";
+
 
                 }
                 unset($this->assets[$key]);
